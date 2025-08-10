@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Assistente RAG + Avaliação IA</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Plotly para os gráficos -->
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <style>
+    :root { --bg:#0b1220; --card:#111a2b; --muted:#93a4c3; --text:#e6eefc; --ok:#79d38d; --warn:#ffcf66; --err:#ff7a7a; }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      background:linear-gradient(180deg,#0b1220,#0e1322 35%,#0b1220);
+      color:var(--text);
+      font:16px/1.45 system-ui,Segoe UI,Roboto,Arial;
+      min-height:100vh;
+      display:flex;
+      flex-direction:column;
+    }
+    a{color:inherit;text-decoration:none}
+    a[target="_blank"]{cursor:pointer}
+    .wrap{max-width:980px;margin:36px auto;padding:0 16px;flex:1}
+    .card{background:var(--card);border:1px solid #1e2a42;border-radius:14px;padding:18px 20px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+    h1{font-size:22px;margin:0 0 12px}
+    .sub{color:var(--muted);font-size:14px;margin-bottom:16px}
+    textarea{width:100%;min-height:96px;border:1px solid #26324a;border-radius:10px;background:#0c1425;color:var(--text);padding:12px;outline:none}
+    button{appearance:none;border:0;cursor:pointer;background:#2a6df6;color:white;border-radius:10px;padding:10px 16px;font-weight:600}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .row{display:flex;gap:12px;align-items:center;margin-top:10px}
+    .grid{display:grid;gap:14px;margin-top:16px}
+    .two{grid-template-columns:1fr 1fr} .one{grid-template-columns:1fr}
+    .block{background:#0e172a;border:1px solid #1e2a42;border-radius:12px;padding:14px}
+    .kpi{display:flex;gap:10px;flex-wrap:wrap}
+    .pill{background:#0b1426;border:1px solid #223355;border-radius:999px;padding:6px 10px;color:#cfe0ff;font-size:13px}
+    .pill.ok{border-color:#2f6; color:#adffcf} .pill.warn{border-color:#fc6; color:#ffe1a6} .pill.err{border-color:#f77; color:#ffc1c1}
+    .mono{white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .muted{color:var(--muted)}
+    .list{margin:0;padding-left:18px}
+    .small{font-size:13px}
+    .spinner{display:inline-block;width:16px;height:16px;border:2px solid #2a6df6;border-right-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;margin-left:8px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .error{color:var(--err)}
+    footer{
+      text-align:center;
+      font-size:13px;
+      color:var(--muted);
+      padding:12px;
+      border-top:1px solid #1e2a42;
+      background:#0b1220;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Assistente RAG + Avaliação por IA</h1>
+      <div class="sub">Digite sua pergunta. O sistema buscará fontes no Pinecone, gerará a resposta e avaliará a qualidade automaticamente.</div>
+
+      <label for="pergunta" class="small muted">Pergunta</label>
+      <textarea id="pergunta" placeholder="Ex.: Quais documentos preciso para solicitar crédito?"></textarea>
+
+      <div class="row">
+        <button id="btnEnviar" onclick="enviar()">Enviar</button>
+        <div id="loading" style="display:none" class="small muted">
+          Processando <span class="spinner"></span>
+        </div>
+        <div id="erro" class="small error" style="margin-left:auto;"></div>
+      </div>
+    </div>
+
+    <div id="resultado" class="grid one" style="display:none;margin-top:16px;">
+      <div class="card">
+        <div class="grid two">
+          <div class="block">
+            <div class="small muted">Resposta</div>
+            <div id="resposta" class="mono"></div>
+          </div>
+          <div class="block">
+            <div class="small muted">Métricas (IA)</div>
+            <div class="kpi" style="margin:6px 0 10px">
+              <span class="pill" id="kpiPrecisao">Precisão: –</span>
+              <span class="pill" id="kpiCobertura">Cobertura: –</span>
+              <span class="pill" id="kpiRecall">Recall@3: –</span>
+            </div>
+            <div class="small muted">Críticas / Justificativa</div>
+            <div id="justificativa" class="mono small"></div>
+          </div>
+        </div>
+
+        <div class="block" style="margin-top:14px;">
+          <div class="small muted">Fontes</div>
+          <ol id="fontes" class="list small"></ol>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="block">
+          <div class="small muted">Relatórios Gráficos</div>
+          <div class="small" style="margin:6px 0 10px">
+            Visualização do espaço vetorial (PCA) e Heatmap de similaridade (Pergunta/Resposta × Chunks).
+          </div>
+          <div style="margin-top:8px">
+            <div class="small muted">Visualização do Espaço Vetorial (PCA)</div>
+            <div id="plot-space" style="height:420px;"></div>
+          </div>
+          <div style="margin-top:16px">
+            <div class="small muted">Heatmap de Similaridade</div>
+            <div id="plot-heatmap" style="height:480px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Developed by Henrique Proscholdt
+  </footer>
+
+  <script>
+    document.querySelectorAll('a').forEach(link => link.setAttribute('target','_blank'));
+    const el = id => document.getElementById(id);
+    const fmt = n => (Number.isFinite(+n) ? (+n).toFixed(2) : "–");
+    let ultimaPergunta = "", ultimaResposta = "", chartsReady = false;
+
+    function setKPI(kpiEl, value){
+      kpiEl.textContent = kpiEl.id === 'kpiRecall' ? `Recall@3: ${fmt(value)}` :
+                          kpiEl.id === 'kpiCobertura' ? `Cobertura: ${fmt(value)}` :
+                          `Precisão: ${fmt(value)}`;
+      kpiEl.classList.remove('ok','warn','err');
+      if (!Number.isFinite(+value)) return;
+      const v = +value;
+      if (v >= 8) kpiEl.classList.add('ok');
+      else if (v >= 5) kpiEl.classList.add('warn');
+      else kpiEl.classList.add('err');
+    }
+
+    async function enviar() {
+      el('erro').textContent = '';
+      const pergunta = el('pergunta').value.trim();
+      if (!pergunta) { el('erro').textContent = 'Digite uma pergunta.'; return; }
+
+      el('btnEnviar').disabled = true;
+      el('loading').style.display = 'inline-block';
+
+      try {
+        const resp = await fetch('/api/rag/pergunta', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ pergunta })
+        });
+        if (!resp.ok) throw new Error('Falha na requisição');
+
+        const data = await resp.json();
+        ultimaPergunta = pergunta;
+        ultimaResposta = data?.resposta || "";
+
+        el('resposta').textContent = data.resposta || '—';
+        el('justificativa').textContent = data?.avaliacao?.justificativa || '—';
+
+        setKPI(el('kpiPrecisao'), data?.avaliacao?.precisao);
+        setKPI(el('kpiCobertura'), data?.avaliacao?.cobertura);
+        setKPI(el('kpiRecall'),   data?.avaliacao?.recall3);
+
+        const list = el('fontes');
+        list.innerHTML = '';
+        (data.fontes || []).forEach(f => {
+          const li = document.createElement('li');
+          li.innerHTML = `<div><strong>${f.titulo || '—'}</strong> <span class="muted">(${f.categoria || '—'})</span></div>
+                          <div class="mono small">${f.trecho || '—'}</div>`;
+          list.appendChild(li);
+        });
+
+        el('resultado').style.display = 'grid';
+        chartsReady = true;
+
+        // 🔥 Gera os gráficos automaticamente
+        await gerarGraficos();
+      } catch (e) {
+        el('erro').textContent = 'Erro ao processar sua pergunta.';
+        console.error(e);
+      } finally {
+        el('btnEnviar').disabled = false;
+        el('loading').style.display = 'none';
+      }
+    }
+
+    async function gerarGraficos(){
+      if (!chartsReady) return;
+      const pergunta = (ultimaPergunta || el('pergunta').value || '').trim();
+      const resposta = (ultimaResposta || '').trim();
+
+      try {
+        const space = await fetch('/api/viz/space', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ pergunta, resposta, top_k: 8 })
+        }).then(r => r.json());
+        desenharScatter(space.points);
+
+        const heat = await fetch('/api/viz/heatmap', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ pergunta, resposta, top_k: 8 })
+        }).then(r => r.json());
+        desenharHeatmap(heat.labels, heat.matrix);
+      } catch (e) {
+        console.error(e);
+        alert('Falha ao gerar gráficos.');
+      }
+    }
+
+    function desenharScatter(points) {
+      const grupos = {};
+      points.forEach(p => {
+        const key = p.tipo === 'chunk' ? `chunk:${p.categoria || 'Chunk'}` : p.tipo;
+        if (!grupos[key]) grupos[key] = { x: [], y: [], text: [], name: key };
+        grupos[key].x.push(p.x);
+        grupos[key].y.push(p.y);
+        grupos[key].text.push(`${p.titulo || p.tipo}<br>${p.categoria || ''}`);
+      });
+      const traces = Object.values(grupos).map(g => ({
+        x: g.x, y: g.y, text: g.text, mode: 'markers', type: 'scatter', name: g.name, marker: { size: 10 }
+      }));
+      const layout = { paper_bgcolor:'#0b1117', plot_bgcolor:'#0b1117', font:{color:'#e6edf3'},
+        xaxis:{zeroline:false, showgrid:true, gridcolor:'#223'},
+        yaxis:{zeroline:false, showgrid:true, gridcolor:'#223'},
+        margin:{l:40, r:10, t:10, b:40}
+      };
+      Plotly.newPlot('plot-space', traces, layout, {displayModeBar:false});
+    }
+
+    function desenharHeatmap(labels, matrix) {
+      const data = [{ z: matrix, x: labels, y: labels, type: 'heatmap', colorscale: 'YlGnBu' }];
+      const layout = { paper_bgcolor:'#0b1117', plot_bgcolor:'#0b1117', font:{color:'#e6edf3'},
+        margin:{l:120, r:10, t:10, b:120}, xaxis:{tickangle: -45} };
+      Plotly.newPlot('plot-heatmap', data, layout, {displayModeBar:false});
+    }
+  </script>
+</body>
+</html>

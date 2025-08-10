@@ -1,0 +1,162 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Chatbot RAG</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin: 0; background:#0b1117; color:#e6edf3; }
+    .wrap { max-width: 860px; margin: 24px auto; padding: 0 16px; }
+    h1 { font-size: 20px; margin-bottom: 12px; }
+    .chat {
+      background: #0d1117; border: 1px solid #30363d; border-radius: 12px; padding: 16px; min-height: 420px;
+    }
+    .msg { margin: 10px 0; padding: 12px 14px; border-radius: 12px; max-width: 80%; white-space: pre-wrap; }
+    .user { background:#1f6feb22; border:1px solid #1f6feb55; margin-left:auto; }
+    .assistant { background:#161b22; border:1px solid #30363d; }
+    .meta { font-size:12px; color:#8b949e; margin-top:6px; }
+    .row { display:flex; gap:8px; margin-top:12px; }
+    textarea { flex:1; resize:vertical; min-height:60px; background:#0d1117; color:#e6edf3; border:1px solid #30363d; border-radius:8px; padding:10px; }
+    button { background:#238636; color:white; border:0; border-radius:8px; padding:10px 16px; cursor:pointer; }
+    button.secondary { background:#30363d; }
+    details { margin-top: 8px; }
+    summary { cursor: pointer; color:#8b949e; }
+    .badge { display:inline-block; background:#1f6feb22; color:#58a6ff; border:1px solid #1f6feb55; border-radius:999px; padding:2px 8px; font-size:12px; margin-left:6px; }
+    footer {
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+      padding: 8px 0;
+      background-color: #0b1117;
+      color: #93a4c3;
+      font-size: 14px;
+      border-top: 1px solid #1e2a42;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Chatbot RAG <span id="cat" class="badge" style="display:none;"></span></h1>
+
+    <div id="chat" class="chat"></div>
+
+    <div class="row">
+      <textarea id="msg" placeholder="Digite sua mensagem..."></textarea>
+      <button id="send">Enviar</button>
+      <button id="reset" class="secondary" title="Reiniciar conversa">Reiniciar</button>
+    </div>
+  </div>
+
+  <footer>
+    Developed by Henrique Proscholdt
+  </footer>
+
+  <script>
+    const API_CHAT = "/api/chat/message";
+    const API_RESET = "/api/chat/reset";
+    const chatEl = document.getElementById("chat");
+    const inputEl = document.getElementById("msg");
+    const sendBtn = document.getElementById("send");
+    const resetBtn = document.getElementById("reset");
+    const catEl = document.getElementById("cat");
+
+    let sessionId = localStorage.getItem("chat_session_id") || null;
+
+    function appendUser(text){
+      const div = document.createElement("div");
+      div.className = "msg user";
+      div.textContent = text;
+      chatEl.appendChild(div);
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    function appendAssistant(answer, fontes, categoria){
+      const div = document.createElement("div");
+      div.className = "msg assistant";
+      div.innerHTML = `${answer}`;
+      chatEl.appendChild(div);
+
+      if (categoria) {
+        catEl.style.display = 'inline-block';
+        catEl.textContent = categoria;
+      }
+
+      if (Array.isArray(fontes) && fontes.length) {
+        const d = document.createElement("details");
+        const s = document.createElement("summary");
+        s.textContent = `Ver fontes (${fontes.length})`;
+        d.appendChild(s);
+
+        fontes.forEach((f, i) => {
+          const p = document.createElement("div");
+          p.className = "meta";
+          p.innerHTML = `<strong>${i+1}. ${f.titulo || "(Sem título)"} – <em>${f.categoria || "-"}</em></strong><br>${f.trecho || ""}`;
+          d.appendChild(p);
+        });
+
+        chatEl.appendChild(d);
+      }
+
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    async function send(){
+      const text = (inputEl.value || "").trim();
+      if (!text) return;
+      appendUser(text);
+      inputEl.value = "";
+      sendBtn.disabled = true;
+
+      try {
+        const res = await fetch(API_CHAT, {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ message: text, session_id: sessionId })
+        });
+        if (!res.ok) throw new Error("Falha na requisição");
+        const data = await res.json();
+
+        if (data.session_id) {
+          sessionId = data.session_id;
+          localStorage.setItem("chat_session_id", sessionId);
+        }
+
+        appendAssistant(data.resposta || "Sem resposta.", data.fontes || [], data.categoria || null);
+      } catch (e) {
+        appendAssistant("❌ Erro ao obter resposta. Tente novamente.", [], null);
+        console.error(e);
+      } finally {
+        sendBtn.disabled = false;
+        inputEl.focus();
+      }
+    }
+
+    async function reset(){
+      if (!sessionId) {
+        chatEl.innerHTML = ""; 
+        catEl.style.display = 'none';
+        return;
+      }
+      try {
+        await fetch(`${API_RESET}?session_id=${encodeURIComponent(sessionId)}`, { method: "POST" });
+      } catch {}
+      localStorage.removeItem("chat_session_id");
+      sessionId = null;
+      chatEl.innerHTML = "";
+      catEl.style.display = 'none';
+      inputEl.focus();
+    }
+
+    sendBtn.addEventListener("click", send);
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        send();
+      }
+    });
+    resetBtn.addEventListener("click", reset);
+  </script>
+</body>
+</html>

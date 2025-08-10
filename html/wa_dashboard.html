@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>WhatsApp Bot – Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  body{margin:0;background:#0b1117;color:#e6edf3;font-family:system-ui,Arial}
+  .wrap{max-width:900px;margin:24px auto;padding:0 16px}
+  .card{background:#0d1117;border:1px solid #30363d;border-radius:12px;padding:16px}
+  h1{font-size:20px;margin:0 0 8px}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .badge{display:inline-block;padding:4px 10px;border-radius:999px;border:1px solid #384357;font-size:12px;color:#9cb3d8}
+  .status.ok{border-color:#2f6;color:#9ff0b3}
+  .status.warn{border-color:#fc6;color:#ffe1a6}
+  .status.err{border-color:#f77;color:#ffc1c1}
+  .grid{display:grid;gap:12px;margin-top:12px;grid-template-columns:320px 1fr}
+  #qr{background:#111827;border:1px dashed #2a3150;border-radius:10px;display:flex;align-items:center;justify-content:center;min-height:320px}
+  #qr img{max-width:300px;border-radius:8px}
+  .chat{background:#0d1117;border:1px solid #30363d;border-radius:12px;padding:12px;min-height:360px}
+  .msg{margin:8px 0;padding:10px 12px;border-radius:10px;max-width:80%;white-space:pre-wrap}
+  .user{margin-left:auto;background:#1f6feb22;border:1px solid #1f6feb55}
+  .bot{background:#161b22;border:1px solid #30363d}
+  .muted{color:#8b949e}
+  footer{text-align:center;color:#8b949e;font-size:13px;margin:16px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>WhatsApp Bot – Dashboard</h1>
+    <div class="row">
+      <span>WebSocket:</span>
+      <span id="wsState" class="badge status warn">conectando…</span>
+      <span>WA Status:</span>
+      <span id="waState" class="badge">aguardando QR</span>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="muted" style="margin-bottom:8px">Escaneie o QR com o WhatsApp</div>
+        <div id="qr">QR Code não recebido ainda…</div>
+      </div>
+      <div class="card">
+        <div class="muted" style="margin-bottom:8px">Conversa (DMs somente)</div>
+        <div id="chat" class="chat"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>Developed by Henrique Proscholdt</footer>
+</div>
+
+<script>
+  const waState = document.getElementById('waState');
+  const qrBox  = document.getElementById('qr');
+  const chatEl = document.getElementById('chat');
+  const wsState = document.getElementById('wsState'); // vamos reaproveitar o badge
+
+  function setWsState(txt, cls){ wsState.textContent = txt; wsState.className = 'badge status ' + (cls||''); }
+  function setWaState(txt){ waState.textContent = txt; }
+
+  function appendUser(text){
+    const d = document.createElement('div');
+    d.className = 'msg user';
+    d.textContent = text;
+    chatEl.appendChild(d);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+  function appendBot(text){
+    const d = document.createElement('div');
+    d.className = 'msg bot';
+    d.textContent = text;
+    chatEl.appendChild(d);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  // --- CONEXÃO VIA SSE ---
+  let es;
+  function connectSSE(){
+    try{
+      // Importante: o bot serve SSE aqui:
+      es = new EventSource('http://127.0.0.1:3001/wa/events');
+      setWsState('conectando…','warn');
+
+      es.onopen = () => setWsState('conectado','ok');
+      es.onerror = () => setWsState('desconectado','err');
+
+      es.onmessage = (ev) => {
+        // O express-sse manda JSON em ev.data
+        let msg; try { msg = JSON.parse(ev.data); } catch { return; }
+
+        // Tipos emitidos pelo seu index.js:
+        // {type:'qr', qr}
+        // {type:'ready'} | {type:'authenticated'} | {type:'auth_failure', message}
+        // {type:'disconnected', reason}
+        // {type:'message', from, body, timestamp}
+        // {type:'bot_message', to, body}
+
+        if (msg.type === 'qr') {
+          // msg.qr contém a string do QR; geramos uma imagem via serviço público
+          const url = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data='
+                      + encodeURIComponent(msg.qr);
+          const img = new Image();
+          img.src = url;
+          img.alt = 'QR Code';
+          qrBox.innerHTML = '';
+          qrBox.appendChild(img);
+          setWaState('escaneie o QR');
+
+        } else if (msg.type === 'ready') {
+          setWaState('pronto');
+          qrBox.innerHTML = '<div class="muted">Conectado ✅</div>';
+
+        } else if (msg.type === 'authenticated') {
+          setWaState('autenticado');
+
+        } else if (msg.type === 'auth_failure') {
+          setWaState('falha na autenticação');
+
+        } else if (msg.type === 'disconnected') {
+          setWaState('desconectado (' + (msg.reason || '-') + ')');
+          // deixa a conexão aberta; o servidor reinicia o client e voltará a mandar QR
+
+        } else if (msg.type === 'message') {
+          // mensagem recebida de um usuário (DM)
+          if (msg.body) appendUser(msg.body);
+
+        } else if (msg.type === 'bot_message') {
+          // resposta enviada pelo bot
+          if (msg.body) appendBot(msg.body);
+        }
+      };
+    } catch(e){
+      setWsState('erro','err');
+      console.error(e);
+    }
+  }
+
+  connectSSE();
+</script>
+</body>
+</html>

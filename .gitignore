@@ -1,0 +1,22 @@
+# Ambiente virtual Python
+venv/
+.venv/
+
+# Arquivos de configuração sensíveis
+.env
+
+# Cache e temporários Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Node.js
+node_modules/
+
+# Logs
+*.log
+
+# Arquivos temporários de sistema
+.DS_Store
+Thumbs.db

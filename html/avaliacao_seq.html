@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Avaliação Sequencial RAG (10 perguntas)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <style>
+    :root { --bg:#0b1220; --card:#111a2b; --muted:#93a4c3; --text:#e6eefc; --ok:#79d38d; --warn:#ffcf66; --err:#ff7a7a; }
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,#0b1220,#0e1322 35%,#0b1220);color:var(--text);font:16px/1.45 system-ui,Segoe UI,Roboto,Arial;min-height:100vh;display:flex;flex-direction:column;}
+    .wrap{max-width:1000px;margin:32px auto;padding:0 16px;flex:1}
+    .card{background:var(--card);border:1px solid #1e2a42;border-radius:14px;padding:18px 20px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+    h1{font-size:22px;margin:0 0 6px}
+    .sub{color:var(--muted);font-size:14px;margin:0 0 14px}
+    input[type="text"], textarea{width:100%;border:1px solid #26324a;border-radius:10px;background:#0c1425;color:var(--text);padding:10px;outline:none}
+    textarea{min-height:72px}
+    button{appearance:none;border:0;cursor:pointer;background:#2a6df6;color:white;border-radius:10px;padding:10px 16px;font-weight:600}
+    button.secondary{background:#303a56}
+    button.ghost{background:transparent;border:1px dashed #2a6df6;color:#cfe0ff}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+    .grid{display:grid;gap:14px;margin-top:16px}
+    .two{grid-template-columns:1fr 1fr}
+    .block{background:#0e172a;border:1px solid #1e2a42;border-radius:12px;padding:14px}
+    .mono{white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .muted{color:var(--muted)}
+    .small{font-size:13px}
+    .list{margin:0;padding-left:18px}
+    .kpi{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 10px}
+    .pill{background:#0b1426;border:1px solid #223355;border-radius:999px;padding:6px 10px;color:#cfe0ff;font-size:13px}
+    .pill.ok{border-color:#2f6;color:#adffcf} .pill.warn{border-color:#fc6;color:#ffe1a6} .pill.err{border-color:#f77;color:#ffc1c1}
+    .spinner{display:inline-block;width:16px;height:16px;border:2px solid #2a6df6;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite;margin-left:8px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .error{color:var(--err)}
+    footer{text-align:center;font-size:13px;color:var(--muted);padding:12px;border-top:1px solid #1e2a42;background:#0b1220}
+    .divider{height:1px;background:#1e2a42;margin:12px 0}
+    .badge{display:inline-block;padding:2px 8px;border:1px solid #2a6df6;border-radius:999px;color:#9ec1ff;background:#1a2a55;font-size:12px}
+
+    /* Evidências */
+    .ev-list{margin:0; padding-left:18px}
+    .ev-item{margin:8px 0}
+    .tag{display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; margin-right:6px; border:1px solid #334}
+    .tag.suportado{background:#15361e; color:#aef0c0; border-color:#2b7a3f}
+    .tag.contradito{background:#3a1a1a; color:#ffbdbd; border-color:#8b3030}
+    .tag.nao_encontrado{background:#352d18; color:#ffe0a3; border-color:#8a6a20}
+    .chips{display:inline-flex; gap:6px; flex-wrap:wrap}
+    .chip{border:1px solid #3a4a6e; background:#0b1426; color:#cfe0ff; padding:2px 8px; border-radius:999px; font-size:12px}
+
+    /* summary/ details */
+    details{border:1px dashed #2a3150; border-radius:10px; padding:10px; background:#0c1425}
+    summary{cursor:pointer; list-style:none; position:relative; padding-left:22px}
+    summary::marker{display:none}
+    summary::before{content:"▸"; position:absolute; left:0; top:0; color:#9ec1ff}
+    details[open] summary::before{content:"▾"}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Avaliação Sequencial RAG (10)</h1>
+      <div class="sub">Responda 10 perguntas em sequência. Para cada uma: mostramos resposta, fontes, <strong>evidências</strong> e gráficos. Ao final, relatório agregado.</div>
+
+      <div class="row"><div class="badge">Progresso: <span id="progress">1</span>/10</div></div>
+
+      <label for="perguntaInput" class="small muted">Pergunta atual</label>
+      <input type="text" id="perguntaInput" placeholder="Carregando pergunta..." />
+
+      <div class="row">
+        <button id="btnEnviar" onclick="enviar()">Responder</button>
+        <button id="btnProxima" class="secondary" onclick="proxima()" disabled>Próxima pergunta ▶</button>
+        <button id="btnReiniciar" class="ghost" onclick="reiniciar()">Reiniciar</button>
+        <div id="loading" style="display:none" class="small muted">Processando <span class="spinner"></span></div>
+        <div id="erro" class="small error" style="margin-left:auto;"></div>
+      </div>
+    </div>
+
+    <!-- Resultado por pergunta -->
+    <div id="resultado" class="grid" style="display:none;margin-top:16px;">
+      <div class="card">
+        <div class="grid two">
+          <div class="block">
+            <div class="small muted">Resposta</div>
+            <div id="resposta" class="mono"></div>
+          </div>
+          <div class="block">
+            <div class="small muted">Métricas (IA)</div>
+            <div class="kpi">
+              <span class="pill" id="kpiPrecisao">Precisão: –</span>
+              <span class="pill" id="kpiCobertura">Cobertura: –</span>
+              <span class="pill" id="kpiRecall">Recall@3: –</span>
+            </div>
+            <div class="small muted">Críticas / Justificativa</div>
+            <div id="justificativa" class="mono small"></div>
+          </div>
+        </div>
+
+        <!-- 🔍 EVIDÊNCIAS – COLAPSÁVEL -->
+        <div class="block" style="margin-top:14px;">
+          <details open id="evDetailsAtual">
+            <summary class="small">
+              Evidências do Avaliador
+              <span class="muted small" id="evCountAtual"></span>
+            </summary>
+            <ul id="evidencias" class="ev-list"></ul>
+          </details>
+        </div>
+
+        <div class="block" style="margin-top:14px;">
+          <div class="small muted">Fontes</div>
+          <ol id="fontes" class="list small"></ol>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="block">
+          <div class="small muted">Relatórios Gráficos (pergunta atual)</div>
+          <div class="small" style="margin:6px 0 10px">Espaço vetorial (PCA) e heatmap de similaridade.</div>
+          <div style="margin-top:8px">
+            <div class="small muted">Espaço Vetorial (PCA)</div>
+            <div id="plot-space" style="height:380px;"></div>
+          </div>
+          <div style="margin-top:16px">
+            <div class="small muted">Heatmap de Similaridade</div>
+            <div id="plot-heatmap" style="height:420px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Relatório final -->
+    <div id="final" class="card" style="display:none;margin-top:16px;">
+      <h2>Relatório Final</h2>
+      <div class="small muted">Médias das métricas e detalhamento das 10 perguntas.</div>
+      <div class="kpi" style="margin-top:10px;">
+        <span class="pill" id="kpiPrecMed">Precisão média: –</span>
+        <span class="pill" id="kpiCobMed">Cobertura média: –</span>
+        <span class="pill" id="kpiRecMed">Recall@3 médio: –</span>
+      </div>
+      <div class="divider"></div>
+      <div id="detalhes"></div>
+    </div>
+  </div>
+
+  <footer>Developed by Henrique Proscholdt</footer>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const fmt = n => (Number.isFinite(+n) ? (+n).toFixed(2) : "–");
+    const KPI_CLASS = (v)=> v>=8 ? 'ok' : v>=5 ? 'warn' : 'err';
+
+    const PERGUNTAS = [
+      "Quais são os critérios para aprovação de crédito?",
+      "O que acontece em casos de suspeita de fraude?",
+      "Como funciona a política de reavaliação de limite?",
+      "Quais são as exigências para clientes negativados?",
+      "Quais treinamentos obrigatórios existem no onboarding?",
+      "O que impede a liberação do e-mail corporativo?",
+      "Quais produtos a empresa oferece?",
+      "Como é tratado o suporte ao cliente nos produtos?",
+      "Que medidas de segurança são adotadas (LGPD e afins)?",
+      "Quais práticas de compliance são adotadas?"
+    ];
+
+    let idx = 0;
+    let resultados = [];
+
+    window.addEventListener('DOMContentLoaded', () => {
+      carregarPergunta();
+      $('perguntaInput').addEventListener('keydown', (e)=>{
+        if(e.key === 'Enter'){ e.preventDefault(); $('btnEnviar').click(); }
+      });
+    });
+
+    function carregarPergunta(){
+      $('progress').textContent = (idx+1);
+      $('perguntaInput').value = PERGUNTAS[idx] || '';
+      $('resultado').style.display = 'none';
+      $('btnProxima').disabled = true;
+      $('erro').textContent = '';
+    }
+
+    function setKPI(el, label, value){
+      el.textContent = `${label}: ${fmt(value)}`;
+      el.classList.remove('ok','warn','err');
+      if (Number.isFinite(+value)) el.classList.add(KPI_CLASS(+value));
+    }
+
+    function toggleInputs(disabled){
+      $('btnEnviar').disabled = disabled;
+      $('perguntaInput').disabled = disabled;
+    }
+
+    function renderEvidencias(lista, evidencias, countEl){
+      lista.innerHTML = '';
+      const total = Array.isArray(evidencias) ? evidencias.length : 0;
+      if (countEl) countEl.textContent = `(${total})`;
+      if (!total){
+        const li = document.createElement('li');
+        li.className = 'ev-item';
+        li.innerHTML = `<span class="muted small">Sem evidências retornadas.</span>`;
+        lista.appendChild(li);
+        return;
+      }
+      evidencias.forEach(ev => {
+        const li = document.createElement('li');
+        li.className = 'ev-item';
+        const st = (ev.status||'').toLowerCase();
+        const tagClass = st === 'suportado' ? 'suportado' : (st === 'contradito' ? 'contradito' : 'nao_encontrado');
+        const chips = Array.isArray(ev.chunks_citados) ? ev.chunks_citados.map(c=>`<span class="chip">${c}</span>`).join('') : '';
+        li.innerHTML = `
+          <div><span class="tag ${tagClass}">${st || 'status'}</span> <strong class="small">Afirmação:</strong> <span class="mono small">${ev.trecho_resposta||'—'}</span></div>
+          <div class="small muted" style="margin-top:6px"><strong>Chunks citados:</strong> <span class="chips">${chips || '<span class="muted">—</span>'}</span></div>
+          <div class="mono small" style="margin-top:6px"><strong>Evidência:</strong> ${ev.evidencia||'—'}</div>
+        `;
+        lista.appendChild(li);
+      });
+    }
+
+    async function enviar(){
+      $('erro').textContent = '';
+      const pergunta = $('perguntaInput').value.trim();
+      if(!pergunta){ $('erro').textContent = 'Digite a pergunta.'; return; }
+
+      toggleInputs(true); $('loading').style.display = 'inline-block';
+
+      try{
+        const resp = await fetch('/api/rag/pergunta',{
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ pergunta })
+        });
+        if(!resp.ok) throw new Error('Falha na requisição de resposta');
+        const data = await resp.json();
+
+        $('resposta').textContent = data?.resposta || '—';
+        $('justificativa').textContent = data?.avaliacao?.justificativa || '—';
+        setKPI($('kpiPrecisao'), 'Precisão', data?.avaliacao?.precisao);
+        setKPI($('kpiCobertura'), 'Cobertura', data?.avaliacao?.cobertura);
+        setKPI($('kpiRecall'),   'Recall@3',  data?.avaliacao?.recall3);
+
+        // evidências (colapsável)
+        renderEvidencias($('evidencias'), data?.avaliacao?.evidencias || [], $('evCountAtual'));
+
+        const list = $('fontes'); list.innerHTML = '';
+        (data?.fontes||[]).forEach(f=>{
+          const li = document.createElement('li');
+          li.innerHTML = `<div><strong>${f.titulo||'—'}</strong> <span class="muted">(${f.categoria||'—'})</span></div>
+                          <div class="mono small">${f.trecho||'—'}</div>`;
+          list.appendChild(li);
+        });
+
+        $('resultado').style.display = 'grid';
+
+        const [space, heat] = await Promise.all([
+          fetch('/api/viz/space',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ pergunta, resposta: data?.resposta||'', top_k:8 })}).then(r=>r.json()),
+          fetch('/api/viz/heatmap',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ pergunta, resposta: data?.resposta||'', top_k:8 })}).then(r=>r.json())
+        ]);
+
+        desenharScatter('plot-space', space.points||[]);
+        desenharHeatmap('plot-heatmap', heat.labels||[], heat.matrix||[]);
+
+        resultados[idx] = {
+          pergunta,
+          resposta: data?.resposta||'',
+          fontes: data?.fontes||[],
+          avaliacao: data?.avaliacao||{precisao:null,cobertura:null,recall3:null,justificativa:'', evidencias:[]},
+          space, heat
+        };
+
+        $('btnProxima').disabled = false;
+
+      }catch(e){
+        console.error(e);
+        $('erro').textContent = 'Erro ao processar. Tente novamente.';
+      }finally{
+        $('loading').style.display = 'none';
+        toggleInputs(false);
+      }
+    }
+
+    function proxima(){
+      if (idx < PERGUNTAS.length-1){
+        idx++; carregarPergunta();
+      } else { mostrarFinal(); }
+    }
+
+    function reiniciar(){
+      idx = 0; resultados = [];
+      carregarPergunta();
+      $('final').style.display = 'none';
+      $('resultado').style.display = 'none';
+    }
+
+    function desenharScatter(targetId, points){
+      const grupos = {};
+      points.forEach(p=>{
+        const key = p.tipo === 'chunk' ? `chunk:${p.categoria||'Chunk'}` : p.tipo;
+        if(!grupos[key]) grupos[key] = {x:[],y:[],text:[],name:key};
+        grupos[key].x.push(p.x); grupos[key].y.push(p.y);
+        grupos[key].text.push(`${p.titulo||p.tipo}<br>${p.categoria||''}`);
+      });
+      const traces = Object.values(grupos).map(g=>({x:g.x,y:g.y,text:g.text,mode:'markers',type:'scatter',name:g.name,marker:{size:9}}));
+      const layout = {paper_bgcolor:'#0b1117', plot_bgcolor:'#0b1117', font:{color:'#e6edf3'}, xaxis:{zeroline:false, showgrid:true, gridcolor:'#223'}, yaxis:{zeroline:false, showgrid:true, gridcolor:'#223'}, margin:{l:40,r:10,t:10,b:40}};
+      Plotly.newPlot(targetId, traces, layout, {displayModeBar:false});
+    }
+
+    function desenharHeatmap(targetId, labels, matrix){
+      const data = [{ z: matrix, x: labels, y: labels, type: 'heatmap', colorscale: 'YlGnBu' }];
+      const layout = {paper_bgcolor:'#0b1117', plot_bgcolor:'#0b1117', font:{color:'#e6edf3'}, margin:{l:100,r:10,t:10,b:100}, xaxis:{tickangle:-45}};
+      Plotly.newPlot(targetId, data, layout, {displayModeBar:false});
+    }
+
+    function mostrarFinal(){
+      const vals = resultados.map(r=>r.avaliacao||{});
+      const m = (arr, key)=> {
+        const xs = arr.map(o => Number(o[key])).filter(Number.isFinite);
+        return xs.length ? xs.reduce((a,b)=>a+b,0)/xs.length : NaN;
+      };
+      setKPI($('kpiPrecMed'), 'Precisão média', m(vals,'precisao'));
+      setKPI($('kpiCobMed'), 'Cobertura média', m(vals,'cobertura'));
+      setKPI($('kpiRecMed'), 'Recall@3 médio', m(vals,'recall3'));
+
+      const container = $('detalhes');
+      container.innerHTML = '';
+      resultados.forEach((r,i)=>{
+        const card = document.createElement('div');
+        card.className = 'block';
+        card.style.marginTop = '12px';
+
+        const evidenciasHTML = (Array.isArray(r?.avaliacao?.evidencias) && r.avaliacao.evidencias.length)
+          ? `<details>
+               <summary class="small">Evidências do Avaliador <span class="muted small">(${r.avaliacao.evidencias.length})</span></summary>
+               <ul class="ev-list">
+                 ${r.avaliacao.evidencias.map(ev=>{
+                    const st = (ev.status||'').toLowerCase();
+                    const tagClass = st === 'suportado' ? 'suportado' : (st === 'contradito' ? 'contradito' : 'nao_encontrado');
+                    const chips = Array.isArray(ev.chunks_citados) ? ev.chunks_citados.map(c=>`<span class="chip">${c}</span>`).join('') : '';
+                    return `<li class="ev-item">
+                              <div><span class="tag ${tagClass}">${st||'status'}</span> <strong class="small">Afirmação:</strong> <span class="mono small">${ev.trecho_resposta||'—'}</span></div>
+                              <div class="small muted" style="margin-top:6px"><strong>Chunks citados:</strong> <span class="chips">${chips || '<span class="muted">—</span>'}</span></div>
+                              <div class="mono small" style="margin-top:6px"><strong>Evidência:</strong> ${ev.evidencia||'—'}</div>
+                            </li>`;
+                 }).join('')}
+               </ul>
+             </details>`
+          : `<details><summary class="small">Evidências do Avaliador (0)</summary><div class="small muted">Sem evidências retornadas.</div></details>`;
+
+        card.innerHTML = `
+          <div><strong>${i+1}. ${r.pergunta}</strong></div>
+          <div class="small muted" style="margin-top:6px">Resposta</div>
+          <div class="mono small">${r.resposta||'—'}</div>
+
+          <div class="small muted" style="margin-top:10px">Métricas</div>
+          <div class="kpi">
+            <span class="pill ${Number.isFinite(+r.avaliacao.precisao)?KPI_CLASS(+r.avaliacao.precisao):''}">Precisão: ${fmt(r.avaliacao.precisao)}</span>
+            <span class="pill ${Number.isFinite(+r.avaliacao.cobertura)?KPI_CLASS(+r.avaliacao.cobertura):''}">Cobertura: ${fmt(r.avaliacao.cobertura)}</span>
+            <span class="pill ${Number.isFinite(+r.avaliacao.recall3)?KPI_CLASS(+r.avaliacao.recall3):''}">Recall@3: ${fmt(r.avaliacao.recall3)}</span>
+          </div>
+
+          <div class="small muted">Críticas / Justificativa</div>
+          <div class="mono small">${r.avaliacao.justificativa||'—'}</div>
+
+          <div style="margin-top:10px">${evidenciasHTML}</div>
+
+          <div class="small muted" style="margin-top:10px">Fontes</div>
+          <ol class="list small">
+            ${(r.fontes||[]).map(f=>`<li><div><strong>${f.titulo||'—'}</strong> <span class="muted">(${f.categoria||'—'})</span></div><div class="mono small">${f.trecho||'—'}</div></li>`).join('')}
+          </ol>
+
+          <div class="divider"></div>
+
+          <div class="small muted">Gráficos</div>
+          <div class="small" style="margin:6px 0 10px">Espaço Vetorial (PCA) e Heatmap desta pergunta.</div>
+          <div id="plot-space-${i}" style="height:300px;"></div>
+          <div id="plot-heatmap-${i}" style="height:320px;margin-top:10px;"></div>
+        `;
+        container.appendChild(card);
+        desenharScatter(`plot-space-${i}`, r?.space?.points||[]);
+        desenharHeatmap(`plot-heatmap-${i}`, r?.heat?.labels||[], r?.heat?.matrix||[]);
+      });
+
+      $('final').style.display = 'block';
+      window.scrollTo({top: document.body.scrollHeight, behavior: 'smooth'});
+    }
+  </script>
+</body>
+</html>
