@@ -29,7 +29,8 @@ PY/
 ├─ html/                    # páginas HTML (index, chat, avaliação, wa_dashboard)
 ├─ documentos/              # textos exemplo (usados para RAG)
 ├─ wa-bot/                  # bot WhatsApp (Node + whatsapp-web.js)
-└─ requirements.txt         # dependências Python (UTF-16)
+└─ requirements.txt         # dependências Python 
+└─ transformers/            # scripts .py para limpeza de dados
 ```
 
 ---
@@ -43,7 +44,7 @@ api_key_pinecone="SUA_CHAVE_PINECONE_AQUI"
 
 ---
 
-## 4) Instalação (Python / FastAPI)
+## 4) Instalação (Python / FastAPI) e Creiacao de Base Vetorial
 Abra um terminal na pasta `PY`.
 
 **Crie e ative um ambiente virtual:**
@@ -74,7 +75,12 @@ Acesse:
 - Avaliação (sequencial): [http://127.0.0.1:8000/avaliacao-seq](http://127.0.0.1:8000/avaliacao-seq)  
 - Dashboard WhatsApp: [http://127.0.0.1:8000/wa](http://127.0.0.1:8000/wa)  
 
----
+**Criar o index no pinecone**
+- Acesse o Swagger(/docs) e utilize a rota /api/index/create
+- Nos script .py dentro da pasta transformers, atrele o nome do index criado a varial INDEX_NAME
+
+- Execute o orquestrador de scripts:
+- 0_orquestrador.py
 
 ## 5) Instalação do bot WhatsApp (Node)
 ```bash
