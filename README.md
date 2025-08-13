@@ -212,8 +212,7 @@ cd wa-bot && npm start
 🛠 **Como usar:**
 1. Clique no botão **Avaliação Sequencial**.
 2. Navegue pelas perguntas e respostas apresentadas pelo sistema.
-3. Atribua notas ou selecione as opções conforme solicitado.
-4. Avance até completar todas as avaliações.
+3. Avance até completar todas as avaliações.
 
 ### 5. WhatsApp Bot
 📍 **Finalidade:**
