@@ -1,10 +1,10 @@
 
 # Projeto RAG + Chat + WhatsApp (FastAPI + OpenAI + Pinecone)
 
-- **Este repositório reúne um backend em FastAPI (Python) para RAG/Chat e um servidor Node para o bot de WhatsApp (via whatsapp-web.js), além de páginas HTML para uso via navegador.
-- **Permite criar Agente de IA e nutri-lo com informações específicas atravez de arquivos .txt
-- **Permite usar moldelo de LLM para avaliar as respostas do Agente de IA, usando métricas de precisão, cobertura e Recall@.
-- **Permite integração com whatsapp.
+- Este repositório reúne um backend em FastAPI (Python) para RAG/Chat e um servidor Node para o bot de WhatsApp (via whatsapp-web.js), além de páginas HTML para uso via navegador.
+- Permite criar Agente de IA e nutri-lo com informações específicas atravez de arquivos .txt
+- Permite usar moldelo de LLM para avaliar as respostas do Agente de IA, usando métricas de precisão, cobertura e Recall@.
+- Permite integração com whatsapp.
 
 ## Resumo do que você terá localmente
 - **API FastAPI** (porta 8000) com endpoints de RAG, chat e avaliação.  
