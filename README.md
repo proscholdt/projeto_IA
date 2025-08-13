@@ -16,7 +16,7 @@ Este repositório reúne um backend em FastAPI (Python) para RAG/Chat e um servi
 - Node.js 18+ (LTS) e npm  
 - Conta/credenciais de:
   - OpenAI – chave da API  
-  - Pinecone – chave da API e um Index (dimensão 1536, métrica cosine, serverless aws/us-east-1)  
+  - Pinecone – chave da API e um Index
 
 ---
 
