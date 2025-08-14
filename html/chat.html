@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -9,9 +8,7 @@
     body { font-family: system-ui, Arial, sans-serif; margin: 0; background:#0b1117; color:#e6edf3; }
     .wrap { max-width: 860px; margin: 24px auto; padding: 0 16px; }
     h1 { font-size: 20px; margin-bottom: 12px; }
-    .chat {
-      background: #0d1117; border: 1px solid #30363d; border-radius: 12px; padding: 16px; min-height: 420px;
-    }
+    .chat { background: #0d1117; border: 1px solid #30363d; border-radius: 12px; padding: 16px; min-height: 420px; }
     .msg { margin: 10px 0; padding: 12px 14px; border-radius: 12px; max-width: 80%; white-space: pre-wrap; }
     .user { background:#1f6feb22; border:1px solid #1f6feb55; margin-left:auto; }
     .assistant { background:#161b22; border:1px solid #30363d; }
@@ -20,20 +17,25 @@
     textarea { flex:1; resize:vertical; min-height:60px; background:#0d1117; color:#e6edf3; border:1px solid #30363d; border-radius:8px; padding:10px; }
     button { background:#238636; color:white; border:0; border-radius:8px; padding:10px 16px; cursor:pointer; }
     button.secondary { background:#30363d; }
-    details { margin-top: 8px; }
-    summary { cursor: pointer; color:#8b949e; }
-    .badge { display:inline-block; background:#1f6feb22; color:#58a6ff; border:1px solid #1f6feb55; border-radius:999px; padding:2px 8px; font-size:12px; margin-left:6px; }
-    footer {
-      position: fixed;
-      bottom: 0;
-      width: 100%;
-      padding: 8px 0;
-      background-color: #0b1117;
-      color: #93a4c3;
-      font-size: 14px;
-      border-top: 1px solid #1e2a42;
-      text-align: center;
+
+    /* Botão de microfone */
+    #mic {
+      background:#30363d;
+      display:flex; align-items:center; gap:8px;
     }
+    #mic.recording {
+      background:#d93025;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    #mic svg { width:18px; height:18px; }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(217,48,37,0.5); }
+      70% { box-shadow: 0 0 0 10px rgba(217,48,37,0); }
+      100% { box-shadow: 0 0 0 0 rgba(217,48,37,0); }
+    }
+
+    .badge { display:inline-block; background:#1f6feb22; color:#58a6ff; border:1px solid #1f6feb55; border-radius:999px; padding:2px 8px; font-size:12px; margin-left:6px; }
+    footer { position: fixed; bottom: 0; width: 100%; padding: 8px 0; background-color: #0b1117; color: #93a4c3; font-size: 14px; border-top: 1px solid #1e2a42; text-align: center; }
   </style>
 </head>
 <body>
@@ -44,14 +46,20 @@
 
     <div class="row">
       <textarea id="msg" placeholder="Digite sua mensagem..."></textarea>
+      <!-- NOVO: Botão de microfone -->
+      <button id="mic" title="Falar para transcrever (pt-BR)">
+        <!-- ícone mic (SVG inline) -->
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 14 0h-2zM11 19.93V22h2v-2.07a8.001 8.001 0 0 0 6.928-6.928H17A6 6 0 0 1 7 13.07H4.072A8.001 8.001 0 0 0 11 19.93z"/>
+        </svg>
+        <span id="mic-label">Falar</span>
+      </button>
       <button id="send">Enviar</button>
       <button id="reset" class="secondary" title="Reiniciar conversa">Reiniciar</button>
     </div>
   </div>
 
-  <footer>
-    Developed by Henrique Proscholdt
-  </footer>
+  <footer>Developed by Henrique Proscholdt</footer>
 
   <script>
     const API_CHAT = "/api/chat/message";
@@ -60,6 +68,8 @@
     const inputEl = document.getElementById("msg");
     const sendBtn = document.getElementById("send");
     const resetBtn = document.getElementById("reset");
+    const micBtn = document.getElementById("mic");
+    const micLabel = document.getElementById("mic-label");
     const catEl = document.getElementById("cat");
 
     let sessionId = localStorage.getItem("chat_session_id") || null;
@@ -157,6 +167,78 @@
       }
     });
     resetBtn.addEventListener("click", reset);
+
+    // ===== Reconhecimento de voz (Web Speech API) =====
+    // Suporte (Chrome/Edge usam webkitSpeechRecognition)
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+    let isRecording = false;
+    let baseTextAtStart = ""; // conteúdo que já estava no textarea quando começou a gravar
+
+    function setMicState(recording) {
+      isRecording = recording;
+      micBtn.classList.toggle("recording", recording);
+      micLabel.textContent = recording ? "Gravando…" : "Falar";
+      micBtn.title = recording ? "Clique para parar" : "Falar para transcrever (pt-BR)";
+    }
+
+    if (!SpeechRecognition) {
+      // Sem suporte: desabilita botão
+      micBtn.disabled = true;
+      micBtn.title = "Reconhecimento de voz não suportado neste navegador";
+    } else {
+      recognition = new SpeechRecognition();
+      recognition.lang = "pt-BR";
+      recognition.interimResults = true;   // resultados parciais (vai preenchendo)
+      recognition.continuous = true;       // continua ouvindo até parar
+
+      recognition.onstart = () => setMicState(true);
+
+      recognition.onerror = (e) => {
+        console.error("Speech error:", e.error);
+        setMicState(false);
+      };
+
+      recognition.onend = () => {
+        // encerrou naturalmente (tempo sem fala) ou pelo usuário
+        setMicState(false);
+      };
+
+      recognition.onresult = (event) => {
+        // Monta texto a partir dos resultados
+        let interim = "";
+        let finalTranscript = "";
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const res = event.results[i];
+          if (res.isFinal) {
+            finalTranscript += res[0].transcript;
+          } else {
+            interim += res[0].transcript;
+          }
+        }
+
+        // Atualiza o textarea sem perder o que já existia
+        const sep = baseTextAtStart && !baseTextAtStart.endsWith(" ") ? " " : "";
+        inputEl.value = (baseTextAtStart + sep + finalTranscript + (interim ? " " + interim : "")).trimStart();
+        inputEl.focus();
+        inputEl.selectionStart = inputEl.selectionEnd = inputEl.value.length; // cursor no fim
+      };
+
+      micBtn.addEventListener("click", () => {
+        if (isRecording) {
+          recognition.stop();
+          return;
+        }
+        try {
+          baseTextAtStart = inputEl.value || "";
+          recognition.start();
+        } catch (err) {
+          // Alguns navegadores dão erro se chamar start duas vezes
+          console.error("Não foi possível iniciar o reconhecimento:", err);
+        }
+      });
+    }
   </script>
 </body>
 </html>
