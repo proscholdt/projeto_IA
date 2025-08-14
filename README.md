@@ -229,6 +229,16 @@ cd wa-bot && npm start
 4. Após a autenticação, o status mudará para **Conectado**.
 5. Visualize e envie mensagens diretamente pelo painel.
 
+### 6. Assitente de VOZ
+📍 **Finalidade:**
+1. Converse por voz: clique em “Gravar”, fale, clique de novo para enviar.
+2. Entende e responde: sua fala vira texto, a IA pensa com a mesma base do chat e fala de volta em voz natural.
+3. Avatar animado: escolha entre pessoa, gato ou sua própria imagem (URL); o avatar “fala” junto com a resposta.
+4. Ajustes simples: selecione a voz (pt-BR) e a velocidade da fala conforme seu gosto.
+5. Funciona no PC e celular modernos: basta permitir o uso do microfone.
+6. Atalho rápido: botão “Assistente de Voz (RAG)” na tela inicial abre a página de conversa por voz.
+
+
 
 ## 15) Avaliações e Insights
 

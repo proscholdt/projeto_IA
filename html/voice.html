@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Assistente de Voz (RAG)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin:0; background:#0b1117; color:#e6edf3; }
+    .wrap { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+    h1 { font-size: 20px; margin-bottom: 12px; }
+
+    .grid { display:grid; grid-template-columns: 1fr 320px; gap:16px; align-items:start; }
+    @media (max-width: 1024px) { .grid { grid-template-columns: 1fr; } }
+
+    .chat { background:#0d1117; border:1px solid #30363d; border-radius:12px; padding:16px; min-height:420px; }
+    .msg { margin:10px 0; padding:12px 14px; border-radius:12px; max-width:80%; white-space:pre-wrap; }
+    .user { background:#1f6feb22; border:1px solid #1f6feb55; margin-left:auto; }
+    .assistant { background:#161b22; border:1px solid #30363d; }
+    .meta { font-size:12px; color:#8b949e; margin-top:6px; }
+    details { margin-top:8px; }
+
+    .row { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; align-items:center; }
+    button { background:#238636; color:white; border:0; border-radius:8px; padding:10px 16px; cursor:pointer; }
+    button.secondary { background:#30363d; }
+    .pill { display:inline-flex; align-items:center; gap:8px; padding:10px 14px; border-radius:999px; border:1px solid #30363d; background:#0d1117; cursor:pointer; user-select:none; }
+    .pill.recording { border-color:#d93025; background:#1a0f10; }
+    .dot { width:10px; height:10px; border-radius:50%; background:#6e7681; }
+    .dot.live { background:#d93025; animation:pulse 1s ease-in-out infinite; }
+    @keyframes pulse { 0%{transform:scale(1)} 50%{transform:scale(1.25)} 100%{transform:scale(1)} }
+    .small { font-size:12px; color:#8b949e; }
+    .badge { display:inline-block; background:#1f6feb22; color:#58a6ff; border:1px solid #1f6feb55; border-radius:999px; padding:2px 8px; font-size:12px; margin-left:6px; }
+
+    .controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    select, input[type="range"], input[type="url"] { background:#0d1117; color:#e6edf3; border:1px solid #30363d; border-radius:8px; padding:8px; }
+    label { font-size:12px; color:#8b949e; }
+
+    /* --- CARDS LATERAIS --- */
+    .card { background:#0d1117; border:1px solid #30363d; border-radius:12px; padding:14px; }
+    .card h2 { font-size:16px; margin:0 0 10px 0; color:#c9d1d9; }
+
+    /* --- AVATAR --- */
+    .avatar-wrap { display:flex; flex-direction:column; gap:12px; }
+    .avatar {
+      position:relative; width:220px; height:220px; border-radius:16px;
+      background:#0b1117; border:1px solid #30363d; margin:auto;
+      overflow:hidden; display:grid; place-items:center;
+    }
+    .avatar .frame {
+      position:absolute; inset:8px; border-radius:12px; overflow:hidden; background:#0d1117;
+      display:grid; place-items:center;
+    }
+    .avatar img, .avatar svg { width:100%; height:100%; object-fit:cover; display:block; }
+    .overlay {
+      position:absolute; inset:0; pointer-events:none;
+    }
+    /* ondas */
+    .ring { position:absolute; border:2px solid #58a6ff44; border-radius:50%; opacity:0; transform:scale(0.7); animation: none; }
+    .ring.r1 { width:140px; height:140px; left:50%; top:50%; transform:translate(-50%,-50%) scale(0.7); }
+    .ring.r2 { width:170px; height:170px; left:50%; top:50%; transform:translate(-50%,-50%) scale(0.7); }
+    .ring.r3 { width:200px; height:200px; left:50%; top:50%; transform:translate(-50%,-50%) scale(0.7); }
+    @keyframes wave { 0%{opacity:0; transform:translate(-50%,-50%) scale(0.7);} 15%{opacity:1;} 100%{opacity:0; transform:translate(-50%,-50%) scale(1.05);} }
+    .avatar.speaking .ring.r1 { animation: wave 1.4s ease-out infinite; animation-delay:0s; }
+    .avatar.speaking .ring.r2 { animation: wave 1.4s ease-out infinite; animation-delay:0.15s; }
+    .avatar.speaking .ring.r3 { animation: wave 1.4s ease-out infinite; animation-delay:0.3s; }
+
+    /* boca (overlay simples) – aparece sobre o que estiver na moldura */
+    .mouth {
+      position:absolute; left:50%; bottom:26px; transform:translateX(-50%);
+      width:54px; height:8px; border-radius:14px; background:#9fb7ff66;
+      transition: height 90ms linear, background 90ms linear, transform 90ms linear;
+      box-shadow: 0 0 16px #9fb7ff44;
+    }
+    .avatar.speaking .mouth { height:18px; background:#bcd0ffcc; transform:translateX(-50%) translateY(-2px); }
+
+    /* equalizador (animado de verdade via WebAudio quando houver MP3; caso contrário, CSS) */
+    .eq { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); height:24px; display:flex; gap:4px; align-items:flex-end; }
+    .eq span { width:4px; height:6px; background:#58a6ff66; border-radius:2px; transition: height 80ms linear, opacity 120ms linear; opacity:0.85; }
+    /* animação por CSS quando não há live-eq */
+    .avatar.speaking .eq:not(.live-eq) span { animation: bounce 620ms ease-in-out infinite; }
+    .avatar.speaking .eq:not(.live-eq) span:nth-child(2){ animation-delay:80ms; }
+    .avatar.speaking .eq:not(.live-eq) span:nth-child(3){ animation-delay:140ms; }
+    .avatar.speaking .eq:not(.live-eq) span:nth-child(4){ animation-delay:200ms; }
+    .avatar.speaking .eq:not(.live-eq) span:nth-child(5){ animation-delay:260ms; }
+    .avatar.speaking .eq:not(.live-eq) span:nth-child(6){ animation-delay:320ms; }
+    .avatar.speaking .eq:not(.live-eq) span:nth-child(7){ animation-delay:380ms; }
+    .avatar.speaking .eq:not(.live-eq) span:nth-child(8){ animation-delay:440ms; }
+    @keyframes bounce { 0%,100% { height:6px; } 50% { height:22px; } }
+
+    footer { position: fixed; bottom:0; width:100%; padding:8px 0; background:#0b1117; color:#93a4c3; font-size:14px; border-top:1px solid #1e2a42; text-align:center; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Assistente de Voz (RAG) <span id="cat" class="badge" style="display:none;"></span></h1>
+
+    <div class="grid">
+      <!-- Coluna principal: Chat -->
+      <div>
+        <div id="chat" class="chat"></div>
+
+        <div class="row" style="margin-top:14px;">
+          <div id="micPill" class="pill" title="Clique para iniciar/parar a gravação">
+            <div id="dot" class="dot"></div>
+            <div>
+              <div id="micLabel"><strong>Pronto para ouvir</strong></div>
+              <div class="small">Clique para gravar; clique novamente para enviar</div>
+            </div>
+          </div>
+
+          <div class="controls">
+            <label for="voiceSel">Voz:</label>
+            <select id="voiceSel"></select>
+
+            <label for="voiceRate">Velocidade: <span id="rateVal">1.18</span>x</label>
+            <input id="voiceRate" type="range" min="0.90" max="1.40" step="0.01" value="1.18" />
+            <button id="testVoice" class="secondary" title="Tocar frase de teste">Testar voz</button>
+          </div>
+
+          <button id="reset" class="secondary">Reiniciar sessão</button>
+          <span class="small" id="hint">Entrada: microfone → Whisper (servidor) | Saída: voz feminina pt-BR (navegador ou servidor)</span>
+        </div>
+      </div>
+
+      <!-- Coluna lateral: Cards -->
+      <div class="side">
+        <!-- Card do Avatar -->
+        <div class="card">
+          <h2>Avatar</h2>
+          <div class="avatar-wrap">
+            <div class="avatar" id="avatarCard">
+              <div class="frame">
+                <!-- IMAGEM PERSONALIZADA -->
+                <img id="avatarImg" alt="avatar" style="display:none;" referrerpolicy="no-referrer" />
+
+                <!-- SVG Pessoa (fallback) -->
+                <svg id="avatarHuman" viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">
+                  <defs>
+                    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stop-color="#203040"/>
+                      <stop offset="100%" stop-color="#0d1117"/>
+                    </linearGradient>
+                  </defs>
+                  <rect width="160" height="160" fill="url(#g1)"/>
+                  <circle cx="80" cy="58" r="30" fill="#c8d3f0"/>
+                  <rect x="36" y="100" width="88" height="44" rx="14" fill="#8aa4e6"/>
+                </svg>
+
+                <!-- SVG Gato (fallback) -->
+                <svg id="avatarCat" viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg" style="display:none;">
+                  <rect width="160" height="160" fill="#0f1520"/>
+                  <circle cx="80" cy="90" r="40" fill="#bfe0ff"/>
+                  <polygon points="50,60 70,30 80,62" fill="#bfe0ff"/>
+                  <polygon points="110,60 90,30 80,62" fill="#bfe0ff"/>
+                  <circle cx="66" cy="88" r="6" fill="#0b1117"/>
+                  <circle cx="94" cy="88" r="6" fill="#0b1117"/>
+                  <rect x="76" y="98" width="8" height="6" rx="3" fill="#0b1117"/>
+                </svg>
+              </div>
+
+              <div class="overlay">
+                <div class="ring r1"></div>
+                <div class="ring r2"></div>
+                <div class="ring r3"></div>
+                <div class="mouth"></div>
+                <div class="eq" id="eqBars">
+                  <span></span><span></span><span></span><span></span>
+                  <span></span><span></span><span></span><span></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="controls">
+              <label for="avatarType">Tipo:</label>
+              <select id="avatarType">
+                <option value="human">Pessoa</option>
+                <option value="cat">Gato</option>
+                <option value="custom">Personalizado (URL)</option>
+              </select>
+            </div>
+            <div class="controls" id="customUrlWrap" style="display:none;">
+              <label for="avatarUrl">URL da imagem:</label>
+              <input id="avatarUrl" type="url" placeholder="https://exemplo.com/minha-foto.jpg" size="28" />
+              <button id="applyAvatar" class="secondary">Aplicar</button>
+            </div>
+            <div class="meta small">O avatar “fala” junto com a IA. Com TTS do servidor, o equalizador reage ao áudio real.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>Developed by Henrique Proscholdt</footer>
+
+  <script>
+    const API_TALK = "/api/voice/talk";
+    const chatEl = document.getElementById("chat");
+    const micPill = document.getElementById("micPill");
+    const micLabel = document.getElementById("micLabel");
+    const dotEl = document.getElementById("dot");
+    const resetBtn = document.getElementById("reset");
+    const catEl = document.getElementById("cat");
+
+    // TTS UI
+    const voiceSel = document.getElementById("voiceSel");
+    const voiceRate = document.getElementById("voiceRate");
+    const rateVal = document.getElementById("rateVal");
+    const testBtn = document.getElementById("testVoice");
+
+    // Avatar UI
+    const avatarCard = document.getElementById("avatarCard");
+    const avatarHuman = document.getElementById("avatarHuman");
+    const avatarCat = document.getElementById("avatarCat");
+    const avatarImg = document.getElementById("avatarImg");
+    const avatarType = document.getElementById("avatarType");
+    const customUrlWrap = document.getElementById("customUrlWrap");
+    const avatarUrlInput = document.getElementById("avatarUrl");
+    const applyAvatarBtn = document.getElementById("applyAvatar");
+    const eqBars = document.getElementById("eqBars");
+
+    let sessionId = localStorage.getItem("voice_session_id") || null;
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+    let recordingStartedAt = 0;
+
+    const MIN_DURATION_MS = 600;
+    const MIN_SIZE_BYTES = 2000;
+
+    // ======= TTS =======
+    let voices = [];
+    let voicesReadyResolve;
+    const voicesReady = new Promise(res => (voicesReadyResolve = res));
+
+    function loadVoicesOnce() {
+      function _load() {
+        voices = window.speechSynthesis.getVoices() || [];
+        if (voices.length) {
+          populateVoiceOptions();
+          voicesReadyResolve();
+        }
+      }
+      _load();
+      window.speechSynthesis.onvoiceschanged = _load;
+    }
+
+    function populateVoiceOptions() {
+      const savedName = localStorage.getItem("voice_name") || "";
+      voiceSel.innerHTML = "";
+
+      const ptbr = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith("pt-br"));
+      const others = voices.filter(v => !(v.lang && v.lang.toLowerCase().startsWith("pt-br")));
+
+      const optGroupBR = document.createElement("optgroup");
+      optGroupBR.label = "Português (Brasil) — recomendado";
+      ptbr.forEach(v => {
+        const opt = document.createElement("option");
+        opt.value = v.name;
+        opt.textContent = v.name;
+        optGroupBR.appendChild(opt);
+      });
+
+      const optGroupAll = document.createElement("optgroup");
+      optGroupAll.label = "Outras vozes";
+      others.forEach(v => {
+        const opt = document.createElement("option");
+        opt.value = v.name;
+        opt.textContent = `${v.name} (${v.lang})`;
+        optGroupAll.appendChild(opt);
+      });
+
+      voiceSel.appendChild(optGroupBR);
+      voiceSel.appendChild(optGroupAll);
+
+      const fallbackFemale =
+        ptbr.find(v => /maria|francisca|femin|female|luciana|br/i.test(v.name)) ||
+        ptbr[0] || voices[0] || null;
+
+      if (savedName && voices.some(v => v.name === savedName)) {
+        voiceSel.value = savedName;
+      } else if (fallbackFemale) {
+        voiceSel.value = fallbackFemale.name;
+      }
+
+      localStorage.setItem("voice_name", voiceSel.value);
+    }
+
+    function getSelectedVoice() {
+      const name = voiceSel.value;
+      return voices.find(v => v.name === name) || null;
+    }
+
+    function splitIntoChunks(text) {
+      const sentences = text
+        .replace(/\s+/g, " ")
+        .split(/([.!?…]+)\s+/)
+        .reduce((acc, cur, i, arr) => {
+          if (i % 2 === 0) {
+            const punct = arr[i + 1] || "";
+            acc.push((cur + (punct || "")).trim());
+          }
+          return acc;
+        }, [])
+        .filter(Boolean);
+
+      const chunks = [];
+      let buf = "";
+      for (const s of sentences) {
+        if ((buf + " " + s).trim().length <= 200) {
+          buf = (buf ? buf + " " : "") + s;
+        } else {
+          if (buf) chunks.push(buf);
+          buf = s;
+        }
+      }
+      if (buf) chunks.push(buf);
+      return chunks.length ? chunks : [text];
+    }
+
+    // ======= Avatar animação =======
+    let rafId = null;
+    let audioCtx = null;
+    let analyser = null;
+    let srcNode = null;
+    const freqBins = new Uint8Array(128); // buffer p/ analise
+
+    function startAvatarSpeaking(mode) {
+      avatarCard.classList.add("speaking");
+      // Se modo "live", acrescenta classe na EQ para desabilitar animação CSS
+      if (mode === "live") eqBars.classList.add("live-eq"); else eqBars.classList.remove("live-eq");
+    }
+
+    function stopAvatarSpeaking() {
+      avatarCard.classList.remove("speaking");
+      eqBars.classList.remove("live-eq");
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = null;
+      // zera barras
+      Array.from(eqBars.children).forEach(b => b.style.height = "6px");
+      // encerra graph WebAudio
+      if (srcNode && typeof srcNode.disconnect === "function") srcNode.disconnect();
+      if (analyser && typeof analyser.disconnect === "function") analyser.disconnect();
+      analyser = null; srcNode = null;
+      // não fechamos audioCtx (reuso)
+    }
+
+    function animateEq() {
+      if (!analyser) return;
+      analyser.getByteFrequencyData(freqBins);
+      // 8 barras agregadas
+      const bars = 8;
+      const group = Math.floor(freqBins.length / bars);
+      for (let i=0;i<bars;i++){
+        let sum=0;
+        for (let j=i*group;j<(i+1)*group;j++) sum += freqBins[j];
+        const v = sum / group; // 0..255
+        const h = Math.max(6, (v/255)*24); // 6..24px
+        eqBars.children[i].style.height = h + "px";
+      }
+      rafId = requestAnimationFrame(animateEq);
+    }
+
+    async function playServerAudio(base64) {
+      const url = "data:audio/mpeg;base64," + base64;
+      const audio = new Audio(url);
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === "suspended") await audioCtx.resume();
+        srcNode = audioCtx.createMediaElementSource(audio);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        srcNode.connect(analyser);
+        analyser.connect(audioCtx.destination);
+        startAvatarSpeaking("live");
+        audio.onended = () => stopAvatarSpeaking();
+        audio.onerror = () => stopAvatarSpeaking();
+        audio.play();
+        animateEq();
+      } catch (e) {
+        // fallback: sem live-eq
+        startAvatarSpeaking();
+        audio.onended = () => stopAvatarSpeaking();
+        audio.onerror = () => stopAvatarSpeaking();
+        audio.play();
+      }
+    }
+
+    // ======= Fala do navegador =======
+    async function speak(text) {
+      if (!("speechSynthesis" in window)) return;
+      await voicesReady;
+
+      const voice = getSelectedVoice();
+      const rate = parseFloat(localStorage.getItem("voice_rate") || "1.18");
+      const pitch = 1.18;
+
+      window.speechSynthesis.cancel();
+      startAvatarSpeaking(); // animação CSS
+
+      const chunks = splitIntoChunks(text);
+      for (const chunk of chunks) {
+        await new Promise((resolve) => {
+          const u = new SpeechSynthesisUtterance(chunk);
+          if (voice) u.voice = voice;
+          u.rate = rate;
+          u.pitch = pitch;
+          u.volume = 1.0;
+          u.onerror = () => resolve();
+          u.onend = () => resolve();
+          window.speechSynthesis.speak(u);
+        });
+      }
+      stopAvatarSpeaking();
+    }
+
+    // ======= Avatar modo e imagem =======
+    function applyAvatarMode() {
+      const mode = avatarType.value;
+      if (mode === "human") {
+        avatarHuman.style.display = "";
+        avatarCat.style.display = "none";
+        avatarImg.style.display = "none";
+        customUrlWrap.style.display = "none";
+      } else if (mode === "cat") {
+        avatarHuman.style.display = "none";
+        avatarCat.style.display = "";
+        avatarImg.style.display = "none";
+        customUrlWrap.style.display = "none";
+      } else {
+        avatarHuman.style.display = "none";
+        avatarCat.style.display = "none";
+        avatarImg.style.display = "";
+        customUrlWrap.style.display = "";
+      }
+      localStorage.setItem("avatar_type", mode);
+    }
+
+    function applyAvatarUrl() {
+      const url = (avatarUrlInput.value || "").trim();
+      if (!url) return;
+      avatarImg.src = url;
+      localStorage.setItem("avatar_url", url);
+    }
+
+    // ======= Chat UI =======
+    function appendUser(text){
+      const div = document.createElement("div");
+      div.className = "msg user";
+      div.textContent = text;
+      chatEl.appendChild(div);
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    function appendAssistant(answer, fontes, categoria){
+      const div = document.createElement("div");
+      div.className = "msg assistant";
+      div.innerHTML = answer || "(sem resposta)";
+      chatEl.appendChild(div);
+
+      if (categoria) {
+        catEl.style.display = 'inline-block';
+        catEl.textContent = categoria;
+      } else {
+        catEl.style.display = 'none';
+      }
+
+      if (Array.isArray(fontes) && fontes.length){
+        const d = document.createElement("details");
+        const s = document.createElement("summary");
+        s.textContent = `Ver fontes (${fontes.length})`;
+        d.appendChild(s);
+
+        fontes.forEach((f,i)=>{
+          const p = document.createElement("div");
+          p.className = "meta";
+          p.innerHTML = `<strong>${i+1}. ${f.titulo || "(Sem título)"} – <em>${f.categoria || "-"}</em></strong><br>${f.trecho || ""}`;
+          d.appendChild(p);
+        });
+        chatEl.appendChild(d);
+      }
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    function setRecordingUI(rec){
+      isRecording = rec;
+      micPill.classList.toggle("recording", rec);
+      dotEl.classList.toggle("live", rec);
+      micLabel.innerHTML = rec ? "<strong>Gravando…</strong><div class='small'>Clique novamente para enviar</div>" : "<strong>Pronto para ouvir</strong>";
+    }
+
+    async function ensureMic(){
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      return stream;
+    }
+
+    async function sendAudio(blob){
+      const fd = new FormData();
+      fd.append("audio", blob, "fala.webm");
+      if (sessionId) fd.append("session_id", sessionId);
+
+      const res = await fetch(API_TALK, { method: "POST", body: fd });
+      const data = await res.json().catch(()=>({}));
+
+      if (!res.ok) {
+        const msg = data.detail || "Falha ao processar áudio. Tente novamente.";
+        appendAssistant("❌ " + msg, [], null);
+        return;
+      }
+
+      if (data.session_id) {
+        sessionId = data.session_id;
+        localStorage.setItem("voice_session_id", sessionId);
+      }
+
+      if (data.transcricao) appendUser(data.transcricao);
+      appendAssistant(data.resposta || "Sem resposta.", data.fontes || [], data.categoria || null);
+
+      if (data.audio_base64) {
+        await playServerAudio(data.audio_base64);
+      } else if (data.resposta) {
+        await speak(data.resposta);
+      }
+    }
+
+    function pickBestMime(){
+      if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) return "audio/webm;codecs=opus";
+      if (MediaRecorder.isTypeSupported("audio/webm")) return "audio/webm";
+      if (MediaRecorder.isTypeSupported("audio/ogg")) return "audio/ogg";
+      return "";
+    }
+
+    async function startRecording(){
+      const stream = await ensureMic();
+      audioChunks = [];
+      const mime = pickBestMime();
+      mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+
+      mediaRecorder.ondataavailable = (e)=> { if (e.data && e.data.size > 0) audioChunks.push(e.data); };
+      mediaRecorder.onstop = async ()=>{
+        try {
+          const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+          const duration = Date.now() - recordingStartedAt;
+
+          if (duration < MIN_DURATION_MS || blob.size < MIN_SIZE_BYTES) {
+            appendAssistant("⚠️ Fala muito curta. Tente falar por ~1–2 segundos.", [], null);
+            return;
+          }
+          await sendAudio(blob);
+        } catch (err){
+          appendAssistant("❌ Erro ao enviar áudio. Tente novamente.", [], null);
+          console.error(err);
+        } finally {
+          stream.getTracks().forEach(t=>t.stop());
+          setRecordingUI(false);
+        }
+      };
+
+      mediaRecorder.start(100);
+      recordingStartedAt = Date.now();
+      setRecordingUI(true);
+    }
+
+    function stopRecording(){
+      if (!mediaRecorder) return;
+      if (mediaRecorder.state !== "inactive") mediaRecorder.stop();
+    }
+
+    micPill.addEventListener("click", async ()=>{
+      if (isRecording) stopRecording(); else await startRecording();
+    });
+
+    resetBtn.addEventListener("click", ()=>{
+      localStorage.removeItem("voice_session_id");
+      sessionId = null;
+      chatEl.innerHTML = "";
+      catEl.style.display = 'none';
+      window.speechSynthesis.cancel();
+      stopAvatarSpeaking();
+    });
+
+    // TTS UI init
+    loadVoicesOnce();
+    const savedRate = localStorage.getItem("voice_rate");
+    if (savedRate) {
+      voiceRate.value = savedRate;
+      rateVal.textContent = parseFloat(savedRate).toFixed(2);
+    }
+    voiceSel.addEventListener("change", () => {
+      localStorage.setItem("voice_name", voiceSel.value);
+    });
+    voiceRate.addEventListener("input", () => {
+      rateVal.textContent = parseFloat(voiceRate.value).toFixed(2);
+      localStorage.setItem("voice_rate", voiceRate.value);
+    });
+    testBtn.addEventListener("click", async () => {
+      await speak("Olá! Esta é uma fala de teste com o avatar.");
+    });
+
+    // Avatar init
+    avatarType.addEventListener("change", applyAvatarMode);
+    applyAvatarBtn.addEventListener("click", applyAvatarUrl);
+
+    // Restaurar preferências
+    const savedType = localStorage.getItem("avatar_type") || "human";
+    avatarType.value = savedType;
+    applyAvatarMode();
+    const savedUrl = localStorage.getItem("avatar_url");
+    if (savedUrl) { avatarUrlInput.value = savedUrl; avatarImg.src = savedUrl; }
+
+  </script>
+</body>
+</html>
